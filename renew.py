@@ -40,7 +40,7 @@ def send_tg_with_screenshot(text, screenshot_path):
 
 # 主程序
 if __name__ == "__main__":
-    print(f"\n===== 🚀 g4f.gg 自动续期 (点击后验证优化版) =====")
+    print("\n===== 🚀 g4f.gg 自动续期 (UC 抗验证版) =====")
 
     if os.path.exists(SCREENSHOT_PATH):
         try:
@@ -48,88 +48,49 @@ if __name__ == "__main__":
         except:
             pass
 
+    # ✨ 核心改动：启用 uc=True (Undetected Mode)
+    # 注意：Cloudflare 在完全无头模式下极难绕过，这里使用极其拟真的 UC 模式
     try:
-        # 💡 核心升级：开启 uc=True 反检测绕过 Cloudflare 首次特征扫描
-        # 💡 开启 xvfb=True 在托管/无头环境下提供真实渲染画布，防止 Turnstile 报错
-        with SB(uc=True, xvfb=True, window_size="1920,1080") as sb:
-            
-            print("🌐 正在通过反检测模式打开页面...")
-            sb.uc_open_with_disconnect(TARGET_URL)
-            sb.sleep(12)  # 给充足的时间让页面完全加载完毕
+        with SB(uc=True, test=True, locale_code="en") as sb:
+            # 使用 UC 模式专用的打开页面方法，自带防检测重连
+            sb.uc_open_with_reconnect(TARGET_URL, 10)
+            sb.sleep(5) 
 
-            print("🔍 正在定位并点击续期按钮...")
-            
-            # 改进选择器：利用模糊文本节点穿透外层容器，精准锁定包裹“ADD 3 HOURS”的底层元素
+            print("🔍 正在执行续期点击...")
             selectors = [
-                "//*[text()[contains(., 'ADD 3 HOURS')]]",
-                "//button[contains(., 'ADD 3 HOURS')]",
-                "//div[contains(., 'ADD 3 HOURS')]"
+                "//button[contains(translate(text(), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD 3 HOURS')]",
+                "//button[contains(text(), 'ADD')]"
             ]
             
             clicked = False
             for selector in selectors:
                 try:
-                    if sb.is_element_visible(selector):
-                        # 先平滑滚动到按钮，确保其在可见区域
-                        sb.scroll_to(selector)
-                        sb.sleep(1)
-                        
-                        # 使用 uc_click 模拟真实人类的点击轨迹
-                        sb.uc_click(selector, timeout=5)
-                        print(f"✅ 点击指令已发出 (选择器: {selector})")
-                        clicked = True
-                        break
+                    # 使用 uc_click 让点击行为更像真人
+                    sb.uc_click(selector, timeout=10)
+                    print(f"✅ 成功点击按钮 (选择器: {selector})")
+                    clicked = True
+                    break
                 except Exception:
                     continue 
 
             if not clicked:
                 sb.save_screenshot(SCREENSHOT_PATH)
-                send_tg_with_screenshot("❌ 续期失败：未能在页面上定位到续期按钮", SCREENSHOT_PATH)
+                send_tg_with_screenshot("❌ 续期失败：未能在规定时间内定位并点击按钮", SCREENSHOT_PATH)
                 sys.exit(1)
 
-            # 💡 关键改动：点击按钮后，强制等待 3 秒，留出时间让 Cloudflare 验证码弹窗加载完毕
-            print("👆 按钮已点击，等待 3 秒让 Cloudflare 验证弹窗加载...")
+            print("👆 已点击续期按钮，检测并处理 Cloudflare 验证码...")
             sb.sleep(3)
-
-            # 🛡️ 绕过点击后出现的 Cloudflare Turnstile 验证码
-            print("🛡️ 检查是否存在 Turnstile 人机验证弹窗...")
+            
+            # ✨ 核心改动：尝试自动识别并点击 Cloudflare Turnstile 验证框
             try:
-                cf_iframe = "iframe[src*='challenges.cloudflare.com']"
-                if sb.is_element_visible(cf_iframe):
-                    print("⚠️ ⚡ 侦测到点击后弹出了验证码！正在切入验证框内部...")
-                    # 1. 切入验证码所在的 iframe 内部
-                    sb.switch_to_frame(cf_iframe)
-                    sb.sleep(1)
-                    
-                    # 2. 依次尝试点击验证选框的已知高频组件 ID
-                    checkbox_selectors = ["#challenge-stage", "input[type='checkbox']", ".ctp-checkbox-label"]
-                    cb_clicked = False
-                    for cb in checkbox_selectors:
-                        try:
-                            if sb.is_element_visible(cb):
-                                sb.uc_click(cb, timeout=3)
-                                print(f"   已成功点击人机验证复选框: {cb}")
-                                cb_clicked = True
-                                break
-                        except:
-                            continue
-                    
-                    if not cb_clicked:
-                        print("   未定位到特定选框组件，尝试对准验证码窗口中心进行盲点...")
-                        sb.click("body")
-                            
-                    # 3. 验证点击完成后，切回主网页空间
-                    sb.switch_to_default_content()
-                    print("⏳ 验证码已处理，给予 15 秒时间通过验证并等待刷新...")
-                    sb.sleep(15)
-                else:
-                    print("✅ 未发现显式验证码弹窗，可能已自动无感通过。")
-            except Exception as cf_err:
-                print(f"ℹ️ 处理验证码时出现异常（可能已自动刷新通过）: {cf_err}")
-                sb.switch_to_default_content()
+                # SeleniumBase 内置的验证码帮手，会自动寻找并点击 "Verify you are human"
+                sb.uc_gui_click_captcha()
+                print("⚡ 已尝试触发自动过验证码机制")
+            except Exception as e:
+                print(f"ℹ️ 未检测到标准验证码弹窗或已自动跳过: {e}")
 
-            print("⏳ 正在等待最终页面刷新...")
-            sb.sleep(5)
+            print("⏳ 等待页面刷新与结果确认...")
+            sb.sleep(12)
 
             # 续期完成后截图
             sb.save_screenshot(SCREENSHOT_PATH)
@@ -141,9 +102,13 @@ if __name__ == "__main__":
             except:
                 pass
 
-            success_msg = f"✅ 自动续期流程执行完毕！\n当前页面剩余时间显示为：{remaining}"
-            print(f"\n🎉 {success_msg}")
-            send_tg_with_screenshot(success_msg, SCREENSHOT_PATH)
+            if "SERVER TIME REMAINING" in sb.get_page_source() or remaining != "无法获取":
+                success_msg = f"✅ 续期成功！\n剩余时间：{remaining}"
+                print(f"\n🎉 {success_msg}")
+                send_tg_with_screenshot(success_msg, SCREENSHOT_PATH)
+            else:
+                # 如果没获取到时间，可能是卡在验证了，通过截图确认
+                send_tg_with_screenshot("⚠️ 脚本执行完毕，但未确认到更新后的时间，请检查截图", SCREENSHOT_PATH)
 
     except Exception as e:
         error_msg = f"❌ 续期失败：{str(e)}"

@@ -95,7 +95,7 @@ if __name__ == "__main__":
         except:
             pass
     try:
-        # ✅ 关键配置：UC 模式 + 无桌面支持
+        # ✅ 修复：将 disable_images 改为 block_images（或直接删除）
         with SB(
             uc=True,                # 隐藏自动化特征
             headless=False,         # UC 模式必须关闭 headless
@@ -103,7 +103,7 @@ if __name__ == "__main__":
             window_size="1920,1080",
             locale="en",
             incognito=True,         # 无痕模式减少指纹
-            disable_images=False    # 验证码需要图片
+            block_images=False      # 验证码需要图片，必须设为 False
         ) as sb:
             sb.open(TARGET_URL)
             sb.sleep(5)  # 页面完全加载

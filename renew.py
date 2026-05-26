@@ -41,7 +41,7 @@ def send_tg_with_screenshot(text, screenshot_path):
 
 # 主程序
 if __name__ == "__main__":
-    print("\n===== 🚀 g4f.gg 自动续期 =====")
+    print("\n===== 🚀 g4f.gg 自动续期 (抗 Cloudflare 增强版) =====")
 
     if os.path.exists(SCREENSHOT_PATH):
         try:
@@ -50,35 +50,38 @@ if __name__ == "__main__":
             pass
 
     try:
-        # 💡 优化 1：启用 uc=True (UC防检测模式) 规避 Cloudflare 等人机验证盾
-        # 注：若在无界面服务器(如 GitHub Actions) 运行，SeleniumBase 会自动处理无头环境
+        # 💡 核心修改 1：启用 uc=True (UC防检测模式)
+        # 注意：如果是在 Linux 无界面服务器(如 GitHub Actions)运行且报错，可尝试将 headless=True 改为 headless2=True 
         with SB(uc=True, headless=True, window_size="1920,1080") as sb:
             
-            # 💡 优化 2：使用 uc_open_with_reconnect 确保遭遇人机挑战时能自动过盾
-            print(f"🌐 正在打开目标网址: {TARGET_URL}")
-            sb.uc_open_with_reconnect(TARGET_URL, 5)
-            sb.sleep(15)  # 等待页面及相关异步脚本加载完成
+            # 💡 核心修改 2：使用 uc_open_with_reconnect 打开网页，防止被 CF 直接侦测拦截
+            print(f"🌐 正在安全打开目标网址: {TARGET_URL}")
+            sb.uc_open_with_reconnect(TARGET_URL, 4)
+            sb.sleep(6)  # 等待验证码组件渲染完毕
+
+            # 💡 核心修改 3：调用内置过盾方法，模拟鼠标点击 “请验证您是真人” 选框
+            print("🛡️ 正在绕过 Cloudflare Turnstile 人机验证...")
+            try:
+                sb.uc_gui_click_captcha()
+                print("✅ 已触发自动点击验证框，等待验证通过...")
+                sb.sleep(10)  # 留出足够时间让 Cloudflare 放行并跳转主页
+            except Exception as ce:
+                print(f"⚠️ 自动过盾方法调用提示 (若页面已正常加载可忽略): {ce}")
 
             print("🔍 正在执行续期点击...")
             
-            # 💡 优化 3：将 text() 替换为 . 匹配，防止因 span 嵌套或空格导致定位失败
-            # 同时扩充了大小写模糊匹配、RENEW 关键词以及按钮/超链接样式兜底
+            # 💡 优化：XPath 改用 contains(., 'TEXT') 代替 contains(text(), 'TEXT')，防止因标签嵌套导致无法识别
             selectors = [
                 "//button[contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD 3 HOURS')]",
-                "//button[contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD')]",
-                "//button[contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'RENEW')]",
-                "//a[contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD')]",
-                "//*[contains(@class, 'btn') or contains(@class, 'button')][contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD')]",
-                "//button[contains(., '续期') or contains(., '增加')]",
-                "//a[contains(., '续期') or contains(., '增加')]"
+                "//button[contains(., 'ADD')]",
+                "//button[contains(translate(., 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'RENEW')]"
             ]
             
             clicked = False
             for selector in selectors:
                 try:
-                    # 检查元素在当前页面是否可见，避免盲目等待非目标按钮
                     if sb.is_element_visible(selector):
-                        sb.click(selector, timeout=3)
+                        sb.click(selector, timeout=5)
                         print(f"✅ 成功点击续期按钮 (匹配选择器: {selector})")
                         clicked = True
                         break
@@ -87,14 +90,14 @@ if __name__ == "__main__":
 
             if not clicked:
                 sb.save_screenshot(SCREENSHOT_PATH)
-                # 💡 优化 4：失败时额外保存 HTML 源码，方便下载直接排查具体标签
+                # 如果还是失败，保存源码方便看卡在了哪一步
                 try:
                     with open("page_source.html", "w", encoding="utf-8") as f:
                         f.write(sb.get_page_source())
-                    print("💾 已保存当前页面源码至 page_source.html 供调试")
+                    print("💾 找不到续期按钮，已保存当前网页源码至 page_source.html")
                 except:
                     pass
-                send_tg_with_screenshot("❌ 续期失败：未能在页面中定位到有效的续期按钮", SCREENSHOT_PATH)
+                send_tg_with_screenshot("❌ 续期失败：在通过验证后未能在页面中定位到有效的续期按钮", SCREENSHOT_PATH)
                 sys.exit(1)
 
             print("👆 已点击续期按钮，等待页面响应刷新...")
@@ -106,11 +109,9 @@ if __name__ == "__main__":
             # 获取剩余时间
             remaining = "无法获取"
             try:
-                # 💡 优化 5：提取剩余时间也改为使用 . 匹配
                 remaining = sb.get_text("//div[contains(., 'SERVER TIME REMAINING')]/following-sibling::div[1]")
             except:
                 try:
-                    # 兜底模糊匹配时间文本
                     remaining = sb.get_text("//*[contains(., 'REMAINING') or contains(., '剩余时间')]")
                 except:
                     pass

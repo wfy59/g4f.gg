@@ -40,7 +40,7 @@ def send_tg_with_screenshot(text, screenshot_path):
 
 # 主程序
 if __name__ == "__main__":
-    print("\n===== 🚀 g4f.gg 自动续期 (Actions 动作触发优化版) =====")
+    print("\n===== 🚀 g4f.gg 自动续期 (增强点击与防检测版) =====")
 
     if os.path.exists(SCREENSHOT_PATH):
         try:
@@ -49,78 +49,92 @@ if __name__ == "__main__":
             pass
 
     try:
-        # 启用反检测模式与虚拟桌面
+        # 针对 GitHub Actions 的环境优化：开启 uc 反检测，并用 xvfb 虚拟桌面代替纯无头模式
         with SB(uc=True, xvfb=True, window_size="1920,1080") as sb:
             
             print("🌐 正在通过反检测模式打开页面...")
             sb.uc_open_with_disconnect(TARGET_URL)
-            sb.sleep(10)  # 等待页面首屏加载
+            sb.sleep(12)  # 给充足的时间让页面完全加载完毕
 
-            print("🔍 正在执行续期点击...")
+            print("🔍 正在搜寻并执行续期点击...")
+            
+            # 🔥 核心改进：使用更强大的模糊容器匹配 (.), 无论它是 button、div 还是带了加号都能精准定位
             selectors = [
-                "//button[contains(translate(text(), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD 3 HOURS')]",
-                "//button[contains(text(), 'ADD')]"
+                "//*[contains(., 'ADD 3 HOURS') and not(self::script)]",
+                "//button[contains(., 'ADD')]",
+                "//div[contains(., 'ADD 3 HOURS')]",
+                "//button[contains(@class, 'button')] [contains(., 'ADD')]"
             ]
             
             clicked = False
             for selector in selectors:
                 try:
-                    # 使用 uc_click 模拟真人点击
+                    # 使用 uc_click 绕过点击瞬间的特征扫描
                     sb.uc_click(selector, timeout=8)
-                    print(f"✅ 成功点击续期按钮 (选择器: {selector})")
+                    print(f"✅ 成功点击目标元素 (选择器: {selector})")
                     clicked = True
                     break
                 except Exception:
                     continue 
 
             if not clicked:
+                print("❌ 所有预设选择器均点击失败，尝试抓取当前页面截图进行排查...")
                 sb.save_screenshot(SCREENSHOT_PATH)
-                send_tg_with_screenshot("❌ 续期失败：未能在规定时间内定位并点击按钮", SCREENSHOT_PATH)
+                send_tg_with_screenshot("❌ 续期失败：未能在页面上定位并成功点击续期按钮", SCREENSHOT_PATH)
                 sys.exit(1)
 
-            # 💡 关键改动：点击后停留 3 秒，等待 Cloudflare 弹窗加载出来
-            print("👆 已点击续期按钮，等待 3 秒观察是否触发人机验证...")
+            # 点击后停顿 3 秒，等待 Cloudflare 动作触发型验证码弹窗加载
+            print("👆 已触发点击，等待 3 秒观察是否弹出人机验证...")
             sb.sleep(3)
 
-            # 🛡️ 绕过 Cloudflare Turnstile 验证码（移至点击之后）
-            print("🛡️ 检查是否存在 Turnstile 人机验证...")
+            # 🛡️ 绕过点击后出现的 Cloudflare Turnstile 验证码
+            print("🛡️ 检查是否存在 Turnstile 人机验证弹窗...")
             try:
                 cf_iframe = "iframe[src*='challenges.cloudflare.com']"
                 if sb.is_element_visible(cf_iframe):
-                    print("⚠️ ⚡ 探测到点击后弹出了验证码！正在尝试模拟人类点击破解...")
+                    print("⚠️ ⚡ 探测到点击后弹出了验证码！正在尝试切入并破解...")
                     # 1. 切入验证码 iframe 内部
                     sb.switch_to_frame(cf_iframe)
-                    # 2. 模拟真人点击复选框区域
-                    sb.uc_click("#challenge-stage")
+                    
+                    # 2. 多重选择器防线，确保点中验证复选框
+                    checkbox_selectors = ["#challenge-stage", "input[type='checkbox']", ".ctp-checkbox-label"]
+                    for cb in checkbox_selectors:
+                        try:
+                            sb.uc_click(cb, timeout=3)
+                            print(f"   已点击验证组件: {cb}")
+                            break
+                        except:
+                            continue
+                            
                     # 3. 切回主页面
                     sb.switch_to_default_content()
-                    print("⏳ 已成功点击验证码，等待 10 秒让其通过并完成刷新...")
-                    sb.sleep(10)
+                    print("⏳ 验证码已点击，给系统 12 秒时间处理请求与刷新...")
+                    sb.sleep(12)
                 else:
-                    print("✅ 未发现显式验证码，可能已无感通过或直接成功。")
+                    print("✅ 未发现显式验证码，可能已成功或无感通过。")
             except Exception as cf_err:
                 print(f"ℹ️ 处理验证码时出现异常（可能已自动通过）: {cf_err}")
                 sb.switch_to_default_content()
 
             print("⏳ 正在等待最终页面刷新...")
-            sb.sleep(8)
+            sb.sleep(5)
 
-            # 续期完成后截图
+            # 最终状态截图
             sb.save_screenshot(SCREENSHOT_PATH)
 
-            # 获取剩余时间
+            # 获取更新后的剩余时间
             remaining = "无法获取"
             try:
                 remaining = sb.get_text("//div[contains(text(), 'SERVER TIME REMAINING')]/following-sibling::div[1]")
             except:
                 pass
 
-            success_msg = f"✅ 续期成功！\n剩余时间：{remaining}"
+            success_msg = f"✅ 自动化操作流程结束！\n当前页面剩余时间显示为：{remaining}"
             print(f"\n🎉 {success_msg}")
             send_tg_with_screenshot(success_msg, SCREENSHOT_PATH)
 
     except Exception as e:
-        error_msg = f"❌ 续期失败：{str(e)}"
+        error_msg = f"❌ 续期脚本运行异常：{str(e)}"
         print(f"\n{error_msg}")
         if os.path.exists(SCREENSHOT_PATH):
             send_tg_with_screenshot(error_msg, SCREENSHOT_PATH)

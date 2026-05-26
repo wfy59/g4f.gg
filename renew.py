@@ -5,28 +5,31 @@ from seleniumbase import SB
 import requests
 
 # ==========================================
-# 核心配置（已针对g4f.gg弹窗验证优化）
+# 核心配置（已针对g4f.gg精准校准）
 # ==========================================
 TARGET_URL = "https://g4f.gg/wufuyang"
 TG_TOKEN = os.getenv("TG_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
 SCREENSHOT_PATH = "renew_result.png"
 MAX_RETRIES = 3
-# ✅ 点击后先等15秒（足够弹窗加载）
-INITIAL_WAIT_AFTER_CLICK = 15
-# ✅ 验证框父容器选择器（你的弹窗就是这个）
-CAPTCHA_PARENT_SELECTOR = "div[role='dialog']"
+# ✅ 点击后最多等30秒让验证弹窗出现（足够覆盖所有延迟）
+MAX_WAIT_FOR_CAPTCHA = 30
+# 验证弹窗选择器（你的弹窗就是这个）
+CAPTCHA_DIALOG = "div[role='dialog']"
+# 复选框相对于验证弹窗左上角的偏移（1920x1080已校准）
+CHECKBOX_OFFSET_X = 32
+CHECKBOX_OFFSET_Y = 44
 
-# ✅ 发送带截图的 Telegram 通知
+# ✅ 发送带截图的Telegram通知
 def send_tg_with_screenshot(text, screenshot_path):
-    print(f"\n📤 正在发送带截图的 Telegram 通知...")
+    print(f"\n📤 正在发送带截图的Telegram通知...")
     if not TG_TOKEN or not TG_CHAT_ID:
-        print("❌ 通知失败：TG_TOKEN 或 TG_CHAT_ID 为空")
+        print("❌ 通知失败：TG_TOKEN或TG_CHAT_ID为空")
         return
     if not os.path.exists(screenshot_path):
         try:
             url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-            data = {"chat_id": TG_CHAT_ID, "text": f"🤖 G4F 自动续期\n{text}"}
+            data = {"chat_id": TG_CHAT_ID, "text": f"🤖 G4F自动续期\n{text}"}
             requests.post(url, json=data, timeout=10)
             return
         except Exception as e:
@@ -36,46 +39,79 @@ def send_tg_with_screenshot(text, screenshot_path):
         url = f"https://api.telegram.org/bot{TG_TOKEN}/sendPhoto"
         with open(screenshot_path, "rb") as f:
             files = {"photo": f}
-            data = {"chat_id": TG_CHAT_ID, "caption": f"🤖 G4F 自动续期\n{text}"}
+            data = {"chat_id": TG_CHAT_ID, "caption": f"🤖 G4F自动续期\n{text}"}
             requests.post(url, files=files, data=data, timeout=15)
     except Exception as e:
         print(f"❌ 发送带截图通知异常：{e}")
 
-# ✅ 专门处理g4f.gg点击后弹出的Turnstile验证
-def handle_g4f_turnstile(sb):
-    print(f"⏳ 点击完成，等待 {INITIAL_WAIT_AFTER_CLICK} 秒让验证弹窗完全加载...")
-    time.sleep(INITIAL_WAIT_AFTER_CLICK)
+# ✅ 核心：点击后循环检测验证弹窗，出现后立即处理
+def wait_and_handle_turnstile(sb):
+    print("🔍 点击完成，开始循环检测Cloudflare验证弹窗...")
+    start_time = time.time()
     
-    # 检测验证弹窗是否出现
-    if sb.is_element_visible(CAPTCHA_PARENT_SELECTOR):
-        print("✅ 检测到验证弹窗，正在处理Cloudflare Turnstile...")
-        try:
-            # ✅ 核心修复1：显式指定验证框父容器
-            # ✅ 核心修复2：断开驱动连接3秒，模拟真人操作（最关键）
-            sb.uc_gui_click_captcha(CAPTCHA_PARENT_SELECTOR, reconnect_time=3)
-            time.sleep(5)
+    # 循环检测，直到弹窗出现或超时
+    while time.time() - start_time < MAX_WAIT_FOR_CAPTCHA:
+        elapsed = int(time.time() - start_time)
+        print(f"  已等待 {elapsed}/{MAX_WAIT_FOR_CAPTCHA} 秒...")
+        
+        if sb.is_element_visible(CAPTCHA_DIALOG):
+            print("✅ 检测到验证弹窗！正在处理...")
+            # 再等2秒让验证框完全渲染和加载脚本
+            time.sleep(2)
             
-            # 等待验证完成和弹窗消失
-            sb.wait_for_element_not_visible(CAPTCHA_PARENT_SELECTOR, timeout=25)
-            print("✅ Cloudflare验证通过，弹窗已关闭！")
-            return True
-            
-        except Exception as e:
-            print(f"❌ 验证处理失败：{e}")
-            # 备用方案：CDP直接点击验证框
+            # 三重验证方案，按优先级尝试
             try:
-                print("ℹ️ 尝试备用CDP方案...")
-                sb.cdp.gui_click_element(f"{CAPTCHA_PARENT_SELECTOR} #cf-turnstile div")
+                # 方案1：SeleniumBase最新官方solve_captcha()（最推荐）
+                print("ℹ️ 尝试方案1：官方solve_captcha()")
+                sb.solve_captcha()
+                time.sleep(4)
+                if not sb.is_element_visible(CAPTCHA_DIALOG):
+                    print("✅ 方案1验证通过！")
+                    return True
+            except Exception as e:
+                print(f"❌ 方案1失败：{e}")
+            
+            try:
+                # 方案2：指定父容器的uc_gui_click_captcha()
+                print("ℹ️ 尝试方案2：指定父容器点击")
+                sb.uc_gui_click_captcha(CAPTCHA_DIALOG, reconnect_time=3)
+                time.sleep(4)
+                if not sb.is_element_visible(CAPTCHA_DIALOG):
+                    print("✅ 方案2验证通过！")
+                    return True
+            except Exception as e:
+                print(f"❌ 方案2失败：{e}")
+            
+            try:
+                # 方案3：终极坐标点击（无视所有DOM问题）
+                print("ℹ️ 尝试方案3：CDP坐标点击")
+                dialog_rect = sb.cdp.get_gui_element_rect(CAPTCHA_DIALOG)
+                checkbox_x = dialog_rect["x"] + CHECKBOX_OFFSET_X
+                checkbox_y = dialog_rect["y"] + CHECKBOX_OFFSET_Y
+                sb.cdp.gui_click_x_y(checkbox_x, checkbox_y, timeframe=0.3)
                 time.sleep(5)
-                sb.wait_for_element_not_visible(CAPTCHA_PARENT_SELECTOR, timeout=20)
-                print("✅ 备用方案验证通过！")
-                return True
-            except Exception as e2:
-                print(f"❌ 备用方案也失败：{e2}")
-                return False
-    else:
-        print("ℹ️ 未检测到验证弹窗，直接续期成功")
-        return True
+                if not sb.is_element_visible(CAPTCHA_DIALOG):
+                    print("✅ 方案3验证通过！")
+                    return True
+            except Exception as e:
+                print(f"❌ 方案3失败：{e}")
+            
+            # 所有方案都失败
+            print("❌ 所有验证方案均失败")
+            return False
+        
+        # 没检测到弹窗，检查是否已经续期成功
+        try:
+            sb.get_text("//div[contains(text(), 'SERVER TIME REMAINING')]")
+            print("ℹ️ 未触发验证，直接续期成功")
+            return True
+        except:
+            pass
+        
+        time.sleep(1)  # 每秒检测一次
+    
+    print(f"⚠️ 超时：{MAX_WAIT_FOR_CAPTCHA}秒内未检测到验证弹窗")
+    return False
 
 # ✅ 单次续期流程
 def run_renew_once():
@@ -94,13 +130,12 @@ def run_renew_once():
             locale="en",
             incognito=True,
             block_images=False,
-            # ✅ 核心修复3：增强反检测
             undetectable=True,
             uc_cdp_events=True
         ) as sb:
-            # ✅ 核心修复4：用uc_open_with_reconnect打开页面，断开驱动
-            sb.driver.uc_open_with_reconnect(TARGET_URL, reconnect_time=5)
-            sb.sleep(10)
+            # 用uc_open_with_reconnect打开页面，断开驱动避免被检测
+            sb.driver.uc_open_with_reconnect(TARGET_URL, reconnect_time=6)
+            sb.sleep(12)
             
             print("🔍 正在查找续期按钮...")
             selectors = [
@@ -111,8 +146,9 @@ def run_renew_once():
             clicked = False
             for selector in selectors:
                 try:
-                    sb.click(selector, timeout=15)
-                    print(f"✅ 成功点击 ADD 3 HOURS 按钮")
+                    # 模拟真人鼠标移动点击
+                    sb.cdp.gui_click_element(selector, timeframe=0.2)
+                    print(f"✅ 成功点击ADD 3 HOURS按钮")
                     clicked = True
                     break
                 except Exception:
@@ -123,8 +159,8 @@ def run_renew_once():
                 send_tg_with_screenshot("❌ 续期失败：未能找到并点击续期按钮", SCREENSHOT_PATH)
                 return False
             
-            # 处理g4f专属的弹窗验证
-            verification_success = handle_g4f_turnstile(sb)
+            # ✅ 核心：点击后循环等待并处理验证
+            verification_success = wait_and_handle_turnstile(sb)
             if not verification_success:
                 sb.save_screenshot(SCREENSHOT_PATH)
                 send_tg_with_screenshot("❌ 续期失败：Cloudflare验证未通过", SCREENSHOT_PATH)
@@ -157,13 +193,13 @@ def run_renew_once():
 
 # 主程序
 if __name__ == "__main__":
-    print("\n===== 🚀 g4f.gg 自动续期（弹窗验证专属版） =====")
-    print(f"⚙️ 配置：点击后等待{INITIAL_WAIT_AFTER_CLICK}秒，最多重试{MAX_RETRIES}次")
+    print("\n===== 🚀 g4f.gg自动续期（点击触发验证专属版） =====")
+    print(f"⚙️ 配置：验证弹窗最长等待{MAX_WAIT_FOR_CAPTCHA}秒，最多重试{MAX_RETRIES}次")
     
     for attempt in range(MAX_RETRIES + 1):
         if attempt > 0:
             print(f"\n🔄 第 {attempt} 次重试...")
-            time.sleep(10)
+            time.sleep(12)
         
         if run_renew_once():
             print("\n===== 🛑 脚本执行成功 =====")

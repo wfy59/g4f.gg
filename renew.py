@@ -41,7 +41,7 @@ def send_tg_with_screenshot(text, screenshot_path):
 
 # 主程序
 if __name__ == "__main__":
-    print("\n===== 🚀 g4f.gg 自动续期 (Cloudflare 穿透版) =====")
+    print("\n===== 🚀 g4f.gg 自动续期 (先验证后点击版) =====")
 
     if os.path.exists(SCREENSHOT_PATH):
         try:
@@ -50,15 +50,46 @@ if __name__ == "__main__":
             pass
 
     try:
-        # 🔥 关键修改 1：开启 uc=True (反检测模式)
-        # 针对无头模式，使用 headless2=True 替代旧的 headless=True（headless2 混淆效果极强）
-        # 如果是在 Linux 服务器上跑，强烈建议把 headless2=True 改为 xvfb=True
+        # uc=True 开启反检测
+        # 建议：在 Linux 服务器上跑可以用 xvfb=True，本地调试用 headless=False
         with SB(uc=True, headless2=True, window_size="1920,1080") as sb:
             
-            print("🌐 正在隐蔽打开目标网页...")
-            sb.uc_open_with_disconnect(TARGET_URL) # 瞬间切断 CDP 链接，防止开局被秒控
-            sb.sleep(10)  # 等待页面完全加载
+            print("🌐 正在打开目标网页...")
+            sb.uc_open_with_disconnect(TARGET_URL) 
+            sb.sleep(10)  # 等待初始页面加载
 
+            # ==========================================
+            # 🔥 步骤 1：先处理 Cloudflare Turnstile 验证
+            # ==========================================
+            cf_iframe = "iframe[src*='challenges.cloudflare.com']"
+            if sb.is_element_present(cf_iframe):
+                print("🛡️ 检测到 Cloudflare 验证框，开始穿透处理...")
+                
+                # 切入验证码 iframe
+                sb.switch_to_frame(cf_iframe)
+                sb.sleep(1)
+                
+                try:
+                    print("🔘 正在模拟原生点击验证复选框...")
+                    sb.uc_click("input[type='checkbox']", timeout=5)
+                except Exception:
+                    try:
+                        sb.uc_click("#challenge-stage", timeout=5)
+                    except Exception:
+                        sb.uc_click("body", timeout=5)
+                
+                # 切回主页面
+                sb.switch_to_default_content()
+                
+                # 🔥 关键：听从指示，过完验证后在原地死等 12 秒，确保 Token 生效、拦截解除
+                print("⏳ 验证点击完成，等待 12 秒让环境稳定...")
+                sb.sleep(12)
+            else:
+                print("✨ 未发现即时验证框，直接进入下一步。")
+
+            # ==========================================
+            # 🔥 步骤 2：等一下之后，再点击续期按钮
+            # ==========================================
             print("🔍 正在定位续期按钮...")
             selectors = [
                 "//button[contains(translate(text(), 'abcdefghijklmnopqrstuvwxyz', 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'), 'ADD 3 HOURS')]",
@@ -68,7 +99,7 @@ if __name__ == "__main__":
             clicked = False
             for selector in selectors:
                 try:
-                    # 🔥 关键修改 2：使用 uc_click。它在点击瞬间会断开浏览器控制指纹，模拟真人点击
+                    # 使用 uc_click 进行无痕点击
                     sb.uc_click(selector, timeout=10)
                     print(f"✅ 成功点击续期按钮 (选择器: {selector})")
                     clicked = True
@@ -81,39 +112,8 @@ if __name__ == "__main__":
                 send_tg_with_screenshot("❌ 续期失败：未能在规定时间内定位并点击按钮", SCREENSHOT_PATH)
                 sys.exit(1)
 
-            print("👆 已点击续期按钮，正在检测是否弹出 Cloudflare 验证...")
-            sb.sleep(5)
-
-            # ==========================================
-            # 🔥 关键修改 3：针对截图 1000009427.jpg 的验证码穿透逻辑
-            # ==========================================
-            cf_iframe = "iframe[src*='challenges.cloudflare.com']"
-            if sb.is_element_present(cf_iframe):
-                print("🛡️ 检测到 Cloudflare Turnstile 验证弹窗！准备强攻...")
-                
-                # 1. 穿透进入验证码所在的 iframe
-                sb.switch_to_frame(cf_iframe)
-                sb.sleep(1)
-                
-                # 2. 尝试使用无痕点击去勾选那个“Verify you are human”的复选框
-                try:
-                    print("🔘 正在尝试点击验证复选框...")
-                    sb.uc_click("input[type='checkbox']", timeout=5)
-                except Exception:
-                    try:
-                        sb.uc_click("#challenge-stage", timeout=5)
-                    except Exception:
-                        sb.uc_click("body", timeout=5) # 保底策略：直接敲击验证框主体
-                
-                # 3. 及时切回主页面上下文
-                sb.switch_to_default_content()
-                print("⏳ 验证指令已发送，留出 12 秒等待 Cloudflare 释放 Token...")
-                sb.sleep(12)
-            else:
-                print("✨ 提示：未检测到验证弹窗，可能已自动放行。")
-
-            print("⏳ 正在等待最终页面刷新与数据同步...")
-            sb.sleep(8)
+            print("👆 已成功点击续期，等待 10 秒让页面刷新数据...")
+            sb.sleep(10)
 
             # 续期完成后截图
             sb.save_screenshot(SCREENSHOT_PATH)

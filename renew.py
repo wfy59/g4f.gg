@@ -45,13 +45,14 @@ def parse_time_to_seconds(time_str):
     return 0
 
 if __name__ == "__main__":
-    print("\n===== 🚀 g4f.gg 自动续期 (Iframe 穿透版) =====")
+    print("\n===== 🚀 g4f.gg 自动续期 (官方原生破防版) =====")
 
     if os.path.exists(SCREENSHOT_PATH):
         try: os.remove(SCREENSHOT_PATH)
         except: pass
 
     try:
+        # 使用 UC 模式和大分辨率窗口，保持纯净环境
         with SB(uc=True, test=True, locale_code="en", window_size="1920,1080") as sb:
             sb.uc_open_with_reconnect(TARGET_URL, 10)
             sb.sleep(6)
@@ -90,68 +91,44 @@ if __name__ == "__main__":
 
             print("👇 触发标准点击...")
             sb.click(target_selector) 
-            sb.sleep(3)
+            sb.sleep(4)
 
-            # 如果没动静，用 JS 强补一刀
-            if not sb.is_text_visible("VERIFY YOU'RE HUMAN") and not ("hours added" in sb.get_page_source().lower()):
-                print("⚠️ 标准点击未响应，改用 JavaScript 强行注入点击...")
-                sb.js_click(target_selector)
-                sb.sleep(3)
-
-            # ✨ 2. 核心升级：强力攻克 Cloudflare Turnstile 验证框
+            # 2. ✨ 核心修正：使用官方推荐的不切框架原生过验证技术
             cf_iframe_selector = "iframe[src*='challenges.cloudflare.com']"
             
             if sb.is_element_visible(cf_iframe_selector) or sb.is_text_visible("VERIFY YOU'RE HUMAN"):
-                print("⚠️ [检测成功] 发现 Cloudflare Turnstile 验证弹窗，启动精准穿透攻坚...")
+                print("⚠️ [成功呼出] 发现 Cloudflare Turnstile 验证弹窗，启动原生绕过机制...")
                 
-                # ─── 突破策略 A：切入 Iframe 内部直接点击核心微件 ───
+                # ─── 突破策略 A：SeleniumBase 原生验证码自动识别与点击 ───
                 try:
-                    print("🔄 [策略 A] 正在将视口切换至 Cloudflare 内部空间...")
-                    sb.wait_for_element(cf_iframe_selector, timeout=5)
-                    sb.switch_to_frame(cf_iframe_selector) # 穿透进入 Iframe
-                    sb.sleep(1.5)
-                    
-                    # Turnstile 内部复选框可能使用的复合选择器
-                    inner_selectors = [
-                        "#challenge-stage", 
-                        "input[type='checkbox']", 
-                        ".ct-checkbox-label", 
-                        "span.mark",
-                        "label.cb-lb"
-                    ]
-                    
-                    for inner_sel in inner_selectors:
-                        try:
-                            if sb.is_element_visible(inner_sel):
-                                print(f"🎯 找到验证核心组件: {inner_sel}，正在执行深层点击...")
-                                sb.click(inner_sel)
-                                sb.sleep(1)
-                                break
-                        except:
-                            continue
-                    
-                    # 无论成功与否，必须切回主页面顶层
-                    sb.switch_to_default_content()
-                    print("🚀 已从内部空间返回主页面，等待验证结果流转...")
+                    print("🔄 [策略 A] 调用 uc_gui_handle_captcha 进行自动定位点击...")
+                    sb.uc_gui_handle_captcha() # 在最外层主页面自动识别并模拟人类点击验证框，不破坏无痕环境
                     sb.sleep(6)
-                except Exception as iframe_err:
-                    print(f"ℹ️ 策略 A 运行异常 (可能已自动跳过): {iframe_err}")
-                    sb.switch_to_default_content()
+                except Exception as e:
+                    print(f"ℹ️ 策略 A 执行中出现警报: {e}")
 
-                # ─── 突破策略 B：如果弹窗还在，启用原本的 GUI 盲点作为终极兜底 ───
+                # ─── 突破策略 B：如果在 Linux 虚拟环境，使用更隐蔽的系统级模拟 ───
                 if sb.is_element_visible(cf_iframe_selector):
-                    print("🔄 [策略 B] 弹窗依然存在，启动系统级 GUI 模拟点击轰炸...")
-                    for i in range(2):
+                    print("🔄 [策略 B] 弹窗依然存在，切换至高级隐蔽点击检测...")
+                    try:
                         sb.uc_gui_click_captcha()
-                        sb.sleep(5)
-                        if not sb.is_element_visible(cf_iframe_selector):
-                            print("🎉 弹窗消失，兜底策略生效！")
-                            break
-            else:
-                print("ℹ️ 未检测到验证码阻挡，可能已直接通过。")
+                        sb.sleep(6)
+                    except Exception as e:
+                        print(f"ℹ️ 策略 B 报错: {e}")
 
-            print("⏳ 预留缓冲时间，等待服务器刷新数据...")
-            sb.sleep(8)
+                # ─── 突破策略 C：直接从主页面模拟真人轨迹点击 Iframe 外部锚点 ───
+                if sb.is_element_visible(cf_iframe_selector):
+                    print("🔄 [策略 C] 终极防御：直接使用 UC 模拟鼠标行为点击 Iframe 整体区域...")
+                    try:
+                        sb.uc_click(cf_iframe_selector)
+                        sb.sleep(6)
+                    except Exception as e:
+                        print(f"ℹ️ 策略 C 报错: {e}")
+            else:
+                print("ℹ️ 未检测到明显的验证码拦截，可能已直接进入刷新流程。")
+
+            print("⏳ 预留缓冲时间，等待服务器刷新并流转数据...")
+            sb.sleep(12)
             sb.save_screenshot(SCREENSHOT_PATH)
 
             # 3. 记录点击后的时间并严格比对
@@ -173,7 +150,7 @@ if __name__ == "__main__":
                 print(f"\n🎉 {success_msg}")
                 send_tg_with_screenshot(success_msg, SCREENSHOT_PATH)
             else:
-                fail_msg = f"❌ 续期失败：虽然成功呼出了验证码，但最终未能通过校验。\n点击前: {time_before_str}\n点击后: {time_after_str}"
+                fail_msg = f"❌ 续期失败：验证码未能成功解锁。\n点击前: {time_before_str}\n点击后: {time_after_str}"
                 print(f"\n{fail_msg}")
                 send_tg_with_screenshot(fail_msg, SCREENSHOT_PATH)
                 sys.exit(1)

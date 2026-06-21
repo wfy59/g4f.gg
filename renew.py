@@ -7,7 +7,7 @@ import requests
 # ==========================================
 # 核心配置
 # ==========================================
-TARGET_URL = "https://g4f.gg/wufuyang"
+TARGET_URL = "https://g4f.gg/jieke"
 TG_TOKEN = os.getenv("TG_TOKEN", "")
 TG_CHAT_ID = os.getenv("TG_CHAT_ID", "")
 SCREENSHOT_PATH = "renew_result.png"
